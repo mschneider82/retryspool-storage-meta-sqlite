@@ -56,7 +56,7 @@ func NewBackend(config *Config) (*Backend, error) {
 	dsn := config.DatabasePath
 	if config.Options != nil {
 		params := make([]string, 0)
-		
+
 		if config.Options.BusyTimeout > 0 {
 			params = append(params, fmt.Sprintf("_busy_timeout=%d", config.Options.BusyTimeout))
 		}
@@ -78,7 +78,7 @@ func NewBackend(config *Config) (*Backend, error) {
 		if config.Options.TempStore != "" {
 			params = append(params, fmt.Sprintf("_temp_store=%s", config.Options.TempStore))
 		}
-		
+
 		if len(params) > 0 {
 			dsn += "?" + strings.Join(params, "&")
 		}
@@ -161,14 +161,14 @@ func (b *Backend) initSchema() error {
 // writeWorker processes all write operations serially to avoid database locking
 func (b *Backend) writeWorker() {
 	defer b.wg.Done()
-	
+
 	for {
 		select {
 		case <-b.stopCh:
 			return
 		case op := <-b.writeCh:
 			var err error
-			
+
 			switch op.opType {
 			case "store":
 				err = b.doStoreMeta(op.ctx, op.messageID, op.metadata)
@@ -179,7 +179,7 @@ func (b *Backend) writeWorker() {
 			default:
 				err = fmt.Errorf("unknown operation type: %s", op.opType)
 			}
-			
+
 			// Send result back
 			op.resultCh <- writeResult{err: err}
 		}
@@ -334,7 +334,7 @@ func (b *Backend) DeleteMeta(ctx context.Context, messageID string) error {
 // doDeleteMeta performs the actual delete operation (called by write worker)
 func (b *Backend) doDeleteMeta(ctx context.Context, messageID string) error {
 	query := `DELETE FROM messages WHERE id = ?`
-	
+
 	result, err := b.db.ExecContext(ctx, query, messageID)
 	if err != nil {
 		return fmt.Errorf("failed to delete metadata for message %s: %w", messageID, err)
@@ -466,14 +466,14 @@ type sqliteIterator struct {
 	state     metastorage.QueueState
 	batchSize int
 	ctx       context.Context
-	
+
 	// Current state
-	current   []metastorage.MessageMetadata
-	index     int
-	offset    int
-	finished  bool
-	closed    bool
-	mu        sync.RWMutex
+	current  []metastorage.MessageMetadata
+	index    int
+	offset   int
+	finished bool
+	closed   bool
+	mu       sync.RWMutex
 }
 
 // Next returns the next message metadata
@@ -589,7 +589,7 @@ func (it *sqliteIterator) loadBatch(ctx context.Context) error {
 func (it *sqliteIterator) Close() error {
 	it.mu.Lock()
 	defer it.mu.Unlock()
-	
+
 	it.closed = true
 	it.current = nil
 	return nil
@@ -661,7 +661,7 @@ func (b *Backend) doMoveToState(ctx context.Context, messageID string, fromState
 
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return fmt.Errorf("message %s not found", messageID)
+			return metastorage.ErrMessageNotFound
 		}
 		return fmt.Errorf("failed to get metadata for message %s: %w", messageID, err)
 	}
@@ -679,7 +679,7 @@ func (b *Backend) doMoveToState(ctx context.Context, messageID string, fromState
 
 	// Atomic check: ensure message is in expected fromState
 	if metadata.State != fromState {
-		return fmt.Errorf("message %s is in state %d, expected %d", messageID, int(metadata.State), int(fromState))
+		return metastorage.ErrStateConflict
 	}
 
 	// Update state and timestamp

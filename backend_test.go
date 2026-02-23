@@ -85,7 +85,7 @@ func TestSQLiteMetaBackend(t *testing.T) {
 	metadata.State = metastorage.StateActive
 	metadata.Attempts = 1
 	metadata.Updated = time.Now()
-	
+
 	err = backend.UpdateMeta(ctx, messageID, metadata)
 	if err != nil {
 		t.Fatalf("Failed to update metadata: %v", err)
@@ -410,8 +410,19 @@ func TestSQLiteMetaBackendErrorHandling(t *testing.T) {
 
 	// Test MoveToState with non-existent message (should fail)
 	err = backend.MoveToState(ctx, "non-existent-message", metastorage.StateIncoming, metastorage.StateActive)
-	if err == nil {
-		t.Error("Expected error when moving non-existent message")
+	if err != metastorage.ErrMessageNotFound {
+		t.Errorf("Expected ErrMessageNotFound, got %v", err)
+	}
+
+	// Test MoveToState with wrong state (should fail)
+	messageID := "test-wrong-state"
+	backend.StoreMeta(ctx, messageID, metastorage.MessageMetadata{
+		ID:    messageID,
+		State: metastorage.StateIncoming,
+	})
+	err = backend.MoveToState(ctx, messageID, metastorage.StateActive, metastorage.StateDeferred)
+	if err != metastorage.ErrStateConflict {
+		t.Errorf("Expected ErrStateConflict, got %v", err)
 	}
 
 	t.Log("Error handling test passed!")
@@ -499,7 +510,7 @@ func TestSQLiteMetaBackendPerformance(t *testing.T) {
 	start = time.Now()
 	for i := 0; i < 100; i++ {
 		messageID := fmt.Sprintf("perf-test-message-%d", i)
-		err = backend.MoveToState(ctx, messageID, metastorage.QueueState(i % 5), metastorage.StateActive)
+		err = backend.MoveToState(ctx, messageID, metastorage.QueueState(i%5), metastorage.StateActive)
 		if err != nil {
 			t.Fatalf("Failed to move message %d to active: %v", i, err)
 		}
