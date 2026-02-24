@@ -138,7 +138,8 @@ func (b *Backend) initSchema() error {
 		last_error TEXT,
 		size INTEGER NOT NULL DEFAULT 0,
 		priority INTEGER NOT NULL DEFAULT 5,
-		headers TEXT NOT NULL DEFAULT '{}' -- JSON encoded headers
+		headers TEXT NOT NULL DEFAULT '{}', -- JSON encoded headers
+		retry_policy_name TEXT
 	);
 
 	-- Index for efficient state-based queries
@@ -225,8 +226,8 @@ func (b *Backend) doStoreMeta(ctx context.Context, messageID string, metadata me
 	query := `
 		INSERT OR REPLACE INTO messages (
 			id, state, attempts, max_attempts, next_retry, created, updated,
-			last_error, size, priority, headers
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			last_error, size, priority, headers, retry_policy_name
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	_, err = b.db.ExecContext(ctx, query,
@@ -241,6 +242,7 @@ func (b *Backend) doStoreMeta(ctx context.Context, messageID string, metadata me
 		metadata.Size,
 		metadata.Priority,
 		string(headersJSON),
+		metadata.RetryPolicyName,
 	)
 
 	if err != nil {
@@ -254,7 +256,7 @@ func (b *Backend) doStoreMeta(ctx context.Context, messageID string, metadata me
 func (b *Backend) GetMeta(ctx context.Context, messageID string) (metastorage.MessageMetadata, error) {
 	query := `
 		SELECT state, attempts, max_attempts, next_retry, created, updated,
-			   last_error, size, priority, headers
+			   last_error, size, priority, headers, retry_policy_name
 		FROM messages
 		WHERE id = ?
 	`
@@ -275,6 +277,7 @@ func (b *Backend) GetMeta(ctx context.Context, messageID string) (metastorage.Me
 		&metadata.Size,
 		&metadata.Priority,
 		&headersJSON,
+		&metadata.RetryPolicyName,
 	)
 
 	if err != nil {
@@ -516,7 +519,7 @@ func (it *sqliteIterator) loadBatch(ctx context.Context) error {
 	// Build query for full metadata
 	query := `
 		SELECT id, state, attempts, max_attempts, next_retry, created, updated, 
-			   last_error, size, priority, headers
+			   last_error, size, priority, headers, retry_policy_name
 		FROM messages 
 		WHERE state = ? 
 		ORDER BY created ASC 
@@ -548,6 +551,7 @@ func (it *sqliteIterator) loadBatch(ctx context.Context) error {
 			&metadata.Size,
 			&metadata.Priority,
 			&headersJSON,
+			&metadata.RetryPolicyName,
 		)
 		if err != nil {
 			return fmt.Errorf("failed to scan message: %w", err)
